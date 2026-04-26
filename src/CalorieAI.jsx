@@ -295,9 +295,22 @@ function getWeekDays() {
 }
 
 export default function CalorieAI() {
-  const [profile, setProfile] = useState({ gender: "female", age: 28, weight: 65, height: 168, activity: "moderate", goal: "lose" });
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [eaten, setEaten] = useState([]);
+  // Загружаем сохранённые данные из localStorage
+  const savedProfile = (() => {
+    try { return JSON.parse(localStorage.getItem("calorie_profile")) || null; } catch { return null; }
+  })();
+  const savedEaten = (() => {
+    try {
+      const data = JSON.parse(localStorage.getItem("calorie_eaten")) || [];
+      // Оставляем только сегодняшние записи
+      const today = new Date().toDateString();
+      return data.filter(i => new Date(i.addedAt).toDateString() === today);
+    } catch { return []; }
+  })();
+
+  const [profile, setProfile] = useState(savedProfile || { gender: "female", age: 28, weight: 65, height: 168, activity: "moderate", goal: "lose" });
+  const [profileOpen, setProfileOpen] = useState(!savedProfile);
+  const [eaten, setEaten] = useState(savedEaten);
   const [search, setSearch] = useState("");
   const [searchError, setSearchError] = useState("");
   const [keyboardOffset, setKeyboardOffset] = useState(0);
@@ -306,6 +319,16 @@ export default function CalorieAI() {
   const inputRef = useRef(null);
   const barRef = useRef(null);
   const searchTimer = useRef(null);
+
+  // Сохраняем профиль при изменении
+  useEffect(() => {
+    try { localStorage.setItem("calorie_profile", JSON.stringify(profile)); } catch {}
+  }, [profile]);
+
+  // Сохраняем список еды при изменении
+  useEffect(() => {
+    try { localStorage.setItem("calorie_eaten", JSON.stringify(eaten)); } catch {}
+  }, [eaten]);
 
   useEffect(() => {
     // Работает на iOS Safari и Android
@@ -422,7 +445,7 @@ export default function CalorieAI() {
   const weekDays = getWeekDays();
   const barColor = remaining < 0 ? "#FF3B30" : pct > 0.8 ? "#FF9500" : "#4A9EFF";
 
-  function addFood(food) { setEaten(prev => [...prev, { ...food, id: Date.now() + Math.random() }]); }
+  function addFood(food) { setEaten(prev => [...prev, { ...food, id: Date.now() + Math.random(), addedAt: new Date().toISOString() }]); }
   function removeFood(id) { setEaten(prev => prev.filter(i => i.id !== id)); }
 
   function handleSearchChange(val) {
