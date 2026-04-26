@@ -304,13 +304,22 @@ export default function CalorieAI() {
   const [suggestions, setSuggestions] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const inputRef = useRef(null);
+  const barRef = useRef(null);
   const searchTimer = useRef(null);
 
   useEffect(() => {
+    // Работает на iOS Safari и Android
     const onResize = () => {
-      if (window.visualViewport) {
-        const offset = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop;
-        setKeyboardOffset(Math.max(0, offset));
+      if (!window.visualViewport) return;
+      const vv = window.visualViewport;
+      // Высота клавиатуры = разница между window и visualViewport
+      const keyboardH = window.innerHeight - vv.height;
+      setKeyboardOffset(Math.max(0, keyboardH));
+      // Скроллим панель в видимую зону
+      if (keyboardH > 0 && barRef.current) {
+        setTimeout(() => {
+          barRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        }, 50);
       }
     };
     window.visualViewport?.addEventListener("resize", onResize);
@@ -599,7 +608,15 @@ export default function CalorieAI() {
       </div>
 
       {/* ── Fixed bottom input bar ── */}
-      <div style={{ position: "fixed", bottom: keyboardOffset, left: 0, right: 0, width: "100%", zIndex: 30, transition: "bottom 0.1s" }}>
+      <div ref={barRef} style={{
+        position: "fixed",
+        bottom: keyboardOffset,
+        left: 0,
+        right: 0,
+        width: "100%",
+        zIndex: 30,
+        transition: "bottom 0.15s ease-out",
+      }}>
         {/* Suggestions dropdown */}
         {suggestions.length > 0 && (
           <div style={{ background: "#fff", borderTop: "0.5px solid rgba(0,0,0,0.08)", maxHeight: 280, overflowY: "auto" }}>
@@ -621,11 +638,16 @@ export default function CalorieAI() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <div style={{ flex: 1, position: "relative" }}>
               <input ref={inputRef}
-                style={{ width: "100%", padding: "12px 16px", fontSize: 15, border: "none", background: "#fff", borderRadius: 14, outline: "none", color: "#1A1A1A", fontFamily: "inherit", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", boxSizing: "border-box" }}
+                style={{ width: "100%", padding: "12px 16px", fontSize: 16, border: "none", background: "#fff", borderRadius: 14, outline: "none", color: "#1A1A1A", fontFamily: "inherit", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", boxSizing: "border-box" }}
                 placeholder="Поиск продукта или блюда…"
                 value={search}
                 onChange={e => handleSearchChange(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && handleSearch()}
+                onFocus={() => {
+                  setTimeout(() => {
+                    barRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+                  }, 400);
+                }}
               />
               {isSearching && <div style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, border: "2px solid #E5E5EA", borderTopColor: "#1A7BEF", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />}
             </div>
