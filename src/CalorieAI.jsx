@@ -330,33 +330,59 @@ export default function CalorieAI() {
     };
   }, []);
 
-  // Умный локальный поиск — сначала синонимы, потом по словам
-  function localSearch(q) {
-    const ql = q.toLowerCase().trim();
-    // Точное совпадение с синонимом
-    const synName = SYNONYMS[ql];
-    const synResult = synName ? FOOD_DB.filter(f => f.name === synName) : [];
-    // Частичное совпадение с синонимами
-    const partialSyn = Object.entries(SYNONYMS)
-      .filter(([k]) => ql.includes(k) || k.includes(ql))
-      .map(([, v]) => FOOD_DB.find(f => f.name === v))
-      .filter(Boolean);
-    // Поиск по словам в базе
-    const words = ql.split(/\s+/).filter(w => w.length > 1);
-    const byWords = FOOD_DB.filter(f => {
-      const name = f.name.toLowerCase();
-      return words.some(w => name.includes(w));
-    });
-    // Объединяем без дублей
-    const seen = new Set();
-    const all = [...synResult, ...partialSyn, ...byWords].filter(f => {
-      if (seen.has(f.name)) return false;
-      seen.add(f.name); return true;
-    });
-    return all.slice(0, 6);
+  // Парсим граммовку из запроса: "курица 200г" → { query: "курица", grams: 200 }
+  function parseWeight(q) {
+    const match = q.match(/(\d+)\s*(г|гр|грамм|ml|мл|л|kg|кг|oz)?/i);
+    if (match) {
+      const amount = parseInt(match[1]);
+      const unit = (match[2] || "г").toLowerCase();
+      let grams = amount;
+      if (unit === "кг" || unit === "kg") grams = amount * 1000;
+      if (unit === "мл" || unit === "ml") grams = amount; // считаем 1мл ≈ 1г
+      if (unit === "л") grams = amount * 1000;
+      const cleanQuery = q.replace(match[0], "").trim();
+      return { query: cleanQuery || q, grams };
+    }
+    return { query: q, grams: null };
   }
 
-  // ИИ определяет КБЖУ через DeepSeek (через Netlify Function)
+  // Пересчёт КБЖУ под нужный вес
+  function scaleFood(food, grams) {
+    // Определяем базовую порцию из названия (100г, 200мл и т.д.)
+    const baseMatch = food.name.match(/\((\d+)(г|мл|шт)?/i);
+    const base = baseMatch ? parseInt(baseMatch[1]) : 100;
+    const ratio = grams / base;
+    return {
+      ...food,
+      name: `${food.name.replace(/\(\d+.*?\)/, "").trim()} (${grams}г)`,
+      kcal: Math.round(food.kcal * ratio),
+      p: Math.round(food.p * ratio * 10) / 10,
+      f: Math.round(food.f * ratio * 10) / 10,
+      c: Math.round(food.c * ratio * 10) / 10,
+    };
+  }
+
+  // Умный локальный поиск — с учётом граммовки
+  function localSearch(q) {
+    const { query, grams } = parseWeight(q);
+    const ql = query.toLowerCase().trim();
+
+    const synName = SYNONYMS[ql] || Object.entries(SYNONYMS).find(([k]) => ql.includes(k) || k.includes(ql))?.[1];
+    const synResults = synName ? FOOD_DB.filter(f => f.name === synName) : [];
+    const words = ql.split(/\s+/).filter(w => w.length > 1);
+    const byWords = FOOD_DB.filter(f => words.some(w => f.name.toLowerCase().includes(w)));
+
+    const seen = new Set();
+    const all = [...synResults, ...byWords].filter(f => {
+      if (seen.has(f.name)) return false;
+      seen.add(f.name); return true;
+    }).slice(0, 6);
+
+    // Если указана граммовка — пересчитываем
+    return grams ? all.map(f => scaleFood(f, grams)) : all;
+  }
+
+  // ИИ определяет КБЖУ через Groq (через Netlify Function)
   async function askAIForFood(q) {
     if (!q || q.length < 2) return;
     setIsSearching(true);
